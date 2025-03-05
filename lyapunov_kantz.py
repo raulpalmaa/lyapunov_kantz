@@ -125,5 +125,5 @@ np.savetxt("lyapunov_kant.dat", S)
 
 # Measure the execution time and display the results
 finish = time.perf_counter()
-print('Approx. Lyapunov exponent is: ', np.polyfit(taus, S, 1)[0])  # Estimate the Lyapunov exponent slope
+print('Approx. Lyapunov exponent is: ', np.polyfit(taus, S, 1)[0])  # Estimate the Lyapunov exponent from the slope (see Fig. 2 of (1))
 print(f'Finished in {round(finish - start, 2)} second(s)')
