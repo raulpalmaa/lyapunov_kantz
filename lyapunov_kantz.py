@@ -1,109 +1,130 @@
 ####################################################################
 ####################################################################
-#Refs.
+# Refs.
 # 1 : A robust method to estimate the maximal Lyapunov exponent of a time series - https://doi.org/10.1016/0375-9601(94)90991-1
 # 2 : Nonlinear time series analysis - H. Kantz & T. Schreiber- Pg. 70
 ####################################################################
 ####################################################################
 
 import time
-import  concurrent.futures 
+import concurrent.futures
 import numpy as np
-import functools
+
+# Start the timer to measure execution time
 start = time.perf_counter()
 
 
-def henon(xy, a = 1.4, b = 0.3):
-	x, y = xy
-	xit = 1 - a * x**2 + y
-	yit = b * x
-	return xit, yit
+# Henon map function to generate the next state in the system (2D map)
+def henon(xy, a=1.4, b=0.3):
+    """
+    Henon map function. Returns the next (x, y) state based on the given equations:
+    x_{n+1} = 1 - a * x_n^2 + y_n
+    y_{n+1} = b * x_n
+    """
+    x, y = xy
+    xit = 1 - a * x**2 + y  # x equation
+    yit = b * x  # y equation
+    return xit, yit
 
 
-def makelist(lxy,tau):
-	eps = 0.008
-	xyt = lxy[:,0]
-	lista = [[] for i in range(len(xyt))]
-	for K in range(len(xyt)-tau):
-		n = 0
-		soma = 0
-		for i in range(len(xyt)-tau):
-			if(K!=i):
-				soma = np.linalg.norm(lxy[i,:] - lxy[K,:])
-				if((soma) <= eps):
-					lista[K].append(np.linalg.norm(lxy[i + tau,:] - lxy[K + tau,:]))
-	lista = [ll for ll in lista if ll != []] #delete null neighborhoods
-#	lista = [ll for ll in lista if len(ll) <= 5] #select min/max size of neighborhoods
-	return lista
+# Function to find neighborhoods within a distance threshold and compute their distances
+def makelist(lxy, tau):
+    """
+    Creates a list of distances between points in the time series lxy that are within
+    a distance threshold (eps) from each other. It uses a time-delay embedding of tau steps.
+    """
+    eps = 0.008  # Distance threshold for finding similar points
+    lista = [[] for _ in range(len(lxy))]  # Initialize empty lists for each point
+
+    # Compare all pairs of points and check if their distance is below the threshold
+    for K in range(len(lxy) - tau):
+        for i in range(len(lxy) - tau):
+            if K != i:  # Avoid comparing the same point with itself
+                # Calculate the Euclidean distance between the two points
+                distance = np.linalg.norm(lxy[i, :] - lxy[K, :])
+                if distance <= eps:  # If within the threshold, consider it a similar neighborhood
+                    # Add the distance of future points (with time delay tau)
+                    lista[K].append(np.linalg.norm(lxy[i + tau, :] - lxy[K + tau, :]))
+    
+    # Remove empty neighborhoods (no similar points) from the list
+    lista = [ll for ll in lista if ll != []]
+    return lista
 
 
+# Generate the time series using the Henon map
+trs = 6000  # Length of the time series
+t = int(trs / 2)  # Half the length for the second series
 
-trs= 6000
-t = int(trs/2)
+# Initialize the first time series `xp`
+xp = np.zeros((trs + 1, 2))  # Array to store the 2D time series
+xp[0] = 0.353 * np.ones(2)  # Initial state of the series
 
-at = t 
-xp = np.zeros((trs+1 , 2))
-xp[0] = 0.353*np.ones(2)
-
+# Generate the time series `xp` using the Henon map
 for i in range(trs):
-	xp[i+1] = henon(xp[i])
-	
+    xp[i + 1] = henon(xp[i])
 
-xyn = np.zeros((at+1,2))
-xyn[0] = xp[-1]
+# Initialize the second time series `xyn` starting from the last point of `xp`
+xyn = np.zeros((t + 1, 2))
+xyn[0] = xp[-1]  # Start from the last point of the first series
+
+# Generate the second time series `xyn` using the Henon map
+for i in range(t):
+    xyn[i + 1] = henon(xyn[i])
 
 
-for i in range(at):
-	xyn[i+1] = henon(xyn[i])
-
-
-#####Delay reconstruction ###If tau from reconstruction if != then the tau from the neighborhoods measures, uncomment this block
-#tau = 1
-#xy_tau = np.zeros((len(xyn)-tau,2))
-#xy_tau[:,0] = xyn[tau:,0]
-#xy_tau[:,1] = xyn[:len(xy_tau),0]
-#####Delay reconstruction
-
+# Function to compute the Lyapunov exponent using the neighborhoods of points
 def lyaS(entries):
-	S = 0
-	tau = entries[0]
-#### Uncomment if the tau's are the same
-#	xy_tau = np.zeros((len(xyn)-tau,2))
-#	xy_tau[:,0] = xyn[tau:,0]
-#	xy_tau[:,1] = xyn[:len(xy_tau),0]
+    """
+    Computes the Lyapunov exponent (S) for a given value of tau using the neighborhoods
+    and distances calculated from the time series. It calculates the average logarithmic
+    growth rate of distances between nearby points.
+    """
+    tau = entries[0]  # Time delay for the neighborhood calculation
+    xy_tau = np.zeros((len(xyn) - tau, 2))  # Create a new time series with time delay tau
+    xy_tau[:, 0] = xyn[tau:, 0]  # Delay the first dimension (x)
+    xy_tau[:, 1] = xyn[:len(xy_tau), 0]  # Use the first dimension (x) for the second dimension (y)
+    
+    # Get neighborhoods for points in the time series
+    diffs = makelist(xy_tau, tau)[:500]  # Take the first 500 neighborhoods (can be adjusted)
+    
+    # Initialize sum for the Lyapunov exponent calculation
+    S = 0
+
+    # Loop through the neighborhoods and compute the logarithmic growth rate
+    for neighborhood in diffs:
+        soma = 0  # Sum of the distances
+        Us = 0    # Number of similar points in the neighborhood
+        for k in neighborhood:
+            soma += k  # Add the distance for each point in the neighborhood
+            Us += 1    # Increment the number of similar points
+        
+        # Calculate the logarithmic average growth rate for this neighborhood
+        S += np.log(soma / Us)
+
+    # Normalize by the number of neighborhoods
+    S /= len(diffs)
+    return S
 
 
-	diffs = makelist(xy_tau,tau)[:500]# taking of 500 neighborhoods, you can take into account all of them if you want
-	l_diff = []
+# List of tau values for which we want to compute the Lyapunov exponent
+taus = [1, 5, 10]
 
-
-	for i in range(len(diffs)):
-		soma = 0
-		Us = 0
-		l_diff = diffs[i]
-		for k in l_diff:
-			soma += (k)
-			Us += 1
-		S += np.log(soma/Us)
-
-
-	S /= len(diffs)
-	return S
-
-
-
-rss = []
+# Parallelize the computation of Lyapunov exponents for the different tau values
+rss = []  # List to store the Lyapunov exponents for each tau
 with concurrent.futures.ProcessPoolExecutor() as executor:
-	yns = [[1],[10]]#here you put the list of taus that you want to calculate the Lyapunov exponent. S(tau)
-	results = executor.map(lyaS, yns)
-	for result in results:
-		rss.append(result)
+    # Prepare the tasks for the executor (one task for each tau value)
+    yns = [[i] for i in taus]
+    results = executor.map(lyaS, yns)  # Compute the Lyapunov exponent for each tau in parallel
+    
+    # Collect the results from each task
+    for result in results:
+        rss.append(result)
 
-np.savetxt("lyapunov_kant.dat",np.array(rss))
+# Convert the results to a numpy array and save them to a file
+S = np.array(rss)
+np.savetxt("lyapunov_kant.dat", S)
 
+# Measure the execution time and display the results
 finish = time.perf_counter()
-
-print(f'Finish in {round(finish-start,2)} second(s)')
-
-
-
+print('Approx. Lyapunov exponent is: ', np.polyfit(taus, S, 1)[0])  # Estimate the Lyapunov exponent slope
+print(f'Finished in {round(finish - start, 2)} second(s)')
