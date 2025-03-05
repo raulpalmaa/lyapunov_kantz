@@ -52,8 +52,8 @@ def makelist(lxy, tau):
 
 
 # Generate the time series using the Henon map
-trs = 6000  # Length of the time series
-t = int(trs / 2)  # Half the length for the second series
+trs = 12000  # Length of transient
+t = int(trs / 4)  # Length of the actual time series
 
 # Initialize the first time series `xp`
 xp = np.zeros((trs + 1, 2))  # Array to store the 2D time series
@@ -75,9 +75,8 @@ for i in range(t):
 # Function to compute the Lyapunov exponent using the neighborhoods of points
 def lyaS(entries):
     """
-    Computes the Lyapunov exponent (S) for a given value of tau using the neighborhoods
-    and distances calculated from the time series. It calculates the average logarithmic
-    growth rate of distances between nearby points.
+    Computes S for a given value of tau using the neighborhoods
+    and distances calculated from the time series. Eq. 2.3 of (1).
     """
     tau = entries[0]  # Time delay for the neighborhood calculation
     xy_tau = np.zeros((len(xyn) - tau, 2))  # Create a new time series with time delay tau
